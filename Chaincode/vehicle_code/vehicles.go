@@ -248,21 +248,21 @@ func (t *SimpleChaincode) get_caller_data(stub *shim.ChaincodeStub) (string, int
 //==============================================================================================================================
 func (t *SimpleChaincode) retrieve_product(stub *shim.ChaincodeStub, productId string) (Product, error) {
 
-	var v Product
+	var product Product
 
 	bytes, err := stub.GetState(productId);
 
 	if err != nil {
-		fmt.Printf("RETRIEVE_PRODUCT: Failed to invoke chaincode: %s", err); return v, errors.New("RETRIEVE_V5C: Error retrieving vehicle with v5cID = " + productId)
+		fmt.Printf("RETRIEVE_PRODUCT: Failed to invoke chaincode: %s", err); return product, errors.New("RETRIEVE_V5C: Error retrieving vehicle with pid = " + productId)
 	}
 
-	err = json.Unmarshal(bytes, &v);
+	err = json.Unmarshal(bytes, &product);
 
 	if err != nil {
-		fmt.Printf("RETRIEVE_V5C: Corrupt vehicle record " + string(bytes) + ": %s", err); return v, errors.New("RETRIEVE_V5C: Corrupt vehicle record" + string(bytes))
+		fmt.Printf("RETRIEVE_PRODUCT: Corrupt product record " + string(bytes) + ": %s", err); return product, errors.New("RETRIEVE_PRODUCT: Corrupt product record" + string(bytes))
 	}
 
-	return v, nil
+	return product, nil
 }
 
 //==============================================================================================================================
