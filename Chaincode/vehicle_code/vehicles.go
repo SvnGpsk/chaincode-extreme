@@ -12,7 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"io/ioutil"
-//	"regexp" //regex for GO...used later when chacking values -> TODO
+	"math/rand"
+	//	"regexp" //regex for GO...used later when chacking values -> TODO
 )
 
 //==============================================================================================================================
@@ -56,22 +57,21 @@ type  SimpleChaincode struct {
 //==============================================================================================================================
 //noinspection GoStructTag
 type Product struct {
-	Product_Id		string `json:pid`
-	CheckId			string `json:checksum`
-	Manufacturer		string `json:manufacturer`
-	Owner			string `json:owner`
-	Origin			string `json:origin`
-	Current_location	string `json:current_location`
-	Destination		string `json:destination`
-	Route			string `json:route`
-	State			int `json:state`
-	Price			float32 `json:price`
-	Currency		string `json:currency`
-	Width			float32 `json:width`
-	Height			float32 `json:height`
-	Weight			float32 `json:weight`
-	Sales_contract		byte `json:contract`
-
+	Product_Id       string `json:pid`
+	CheckId          string `json:checksum`
+	Manufacturer     string `json:manufacturer`
+	Owner            string `json:owner`
+	Origin           string `json:origin`
+	Current_location string `json:current_location`
+	Destination      string `json:destination`
+	Route            string `json:route`
+	State            int `json:state`
+	Price            float32 `json:price`
+	Currency         string `json:currency`
+	Width            float32 `json:width`
+	Height           float32 `json:height`
+	Weight           float32 `json:weight`
+	Sales_contract   byte `json:contract`
 }
 
 
@@ -81,7 +81,7 @@ type Product struct {
 //==============================================================================================================================
 
 type Product_Id_Holder struct {
-	ProductIds []string `json:"pids"`
+	ProductIds []int `json:"productIds"`
 }
 
 //==============================================================================================================================
@@ -238,7 +238,7 @@ func (t *SimpleChaincode) get_caller_data(stub *shim.ChaincodeStub) (string, int
 		return "", -1, err
 	}
 
-	return user,affiliation, nil
+	return user, affiliation, nil
 }
 
 //==============================================================================================================================
@@ -286,16 +286,75 @@ func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, product Product
 	return true, nil
 }
 //==============================================================================================================================
-// createRandomId - Create a random id
-//				  method 'PutState'.
+// createRandomId - Creates a random id for the product
+//
 //==============================================================================================================================
 
-func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub,) (int){
+func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub) (int) {
 	var randomId = 0
-	
+	var low = 100000000
+	var high = 999999999
+	for {
+		randomId = rand.Intn(high - low) + low
+		if (t.isRandomIdUnused(stub, randomId)) {
+			break
+		}
+	}
+
 	return randomId
 }
 
+//==============================================================================================================================
+// isRandomIdUnused - Checks if the randomly created id is already used by another product.
+//
+//==============================================================================================================================
+func (t *SimpleChaincode) isRandomIdUnused(stub *shim.ChaincodeStub, randomId int) (bool) {
+	usedIds := make([]int, 500)
+	usedIds = t.getAllUsedProductIds(stub)
+	for _, id := range usedIds {
+		if (id == randomId) {
+			return false
+		}
+	}
+
+	return true
+}
+//==============================================================================================================================
+// isRandomIdUnused - Checks if the randomly created id is already used by another product.
+//
+//==============================================================================================================================
+func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) {
+
+	usedIds := make([]int, 500)
+
+	bytes, err := stub.GetState("productId")
+
+	if err != nil {
+		return nil, errors.New("Unable to get productIds")
+	}
+
+	var productIds Product_Id_Holder
+	err = json.Unmarshal(bytes, &productIds)
+
+	if err != nil {
+		return nil, errors.New("Invalid JSON")
+	}
+	var product Product
+
+	for i, pid := range productIds.ProductIds {
+
+		product, err = t.retrieve_product(stub, pid)
+
+		if err != nil {
+			return nil, errors.New("Failed to retrieve pid")
+		}
+		if (product != nil || product != "[]") {
+			usedIds[i] = product.Product_Id
+		}
+	}
+
+	return usedIds
+}
 //==============================================================================================================================
 //	 Router Functions
 //==============================================================================================================================
@@ -311,7 +370,7 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 	}
 
 	if function == "create_product" {
-		return t.create_product(stub, caller1, caller2, caller1_affiliation, caller2_affiliation,destination, price, currency, contract, args[0])
+		return t.create_product(stub, caller1, caller2, caller1_affiliation, caller2_affiliation, destination, price, currency, contract, args[0])
 	} else {
 		// If the function is not a create then there must be a car so we need to retrieve the car.
 
@@ -359,16 +418,16 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 			//	return t.private_to_scrap_merchant(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
 			//}
 
-		//} else if function == "update_make" {
-		//	return t.update_make(stub, v, caller, caller_affiliation, args[0])
-		//} else if function == "update_model" {
-		//	return t.update_model(stub, v, caller, caller_affiliation, args[0])
-		//} else if function == "update_registration" {
-		//	return t.update_registration(stub, v, caller, caller_affiliation, args[0])
-		//} else if function == "update_colour" {
-		//	return t.update_colour(stub, v, caller, caller_affiliation, args[0])
-		//} else if function == "scrap_vehicle" {
-		//	return t.scrap_vehicle(stub, v, caller, caller_affiliation)
+			//} else if function == "update_make" {
+			//	return t.update_make(stub, v, caller, caller_affiliation, args[0])
+			//} else if function == "update_model" {
+			//	return t.update_model(stub, v, caller, caller_affiliation, args[0])
+			//} else if function == "update_registration" {
+			//	return t.update_registration(stub, v, caller, caller_affiliation, args[0])
+			//} else if function == "update_colour" {
+			//	return t.update_colour(stub, v, caller, caller_affiliation, args[0])
+			//} else if function == "scrap_vehicle" {
+			//	return t.scrap_vehicle(stub, v, caller, caller_affiliation)
 		}
 
 		return nil, errors.New("Function of that name doesn't exist.")
@@ -416,7 +475,7 @@ func (t *SimpleChaincode) Query(stub *shim.ChaincodeStub, function string, args 
 func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 string, caller2 string, caller1_affiliation int, caller2_affiliation int, product_destination string, product_price float32, product_currency string, contract byte) ([]byte, error) {
 
 	var product Product
-	var productId = t.createRandomId() // TODO
+	var productId = t.createRandomId(stub)
 
 	if (caller1_affiliation == 2 && caller2_affiliation == 3) {
 		pid := "\"productId\":\"" + productId + "\", "                                                       // Variables to define the JSON
