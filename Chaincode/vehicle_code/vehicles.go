@@ -300,6 +300,7 @@ func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub) (int) {
 			break
 		}
 	}
+	//TODO in createProduct() die ID zur ID-Liste hinzufügen
 
 	return randomId
 }
