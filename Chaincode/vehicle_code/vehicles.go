@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"io/ioutil"
-	"regexp"
+//	"regexp" //regex for GO...used later when chacking values -> TODO
 )
 
 //==============================================================================================================================
@@ -56,8 +56,8 @@ type  SimpleChaincode struct {
 //==============================================================================================================================
 //noinspection GoStructTag
 type Product struct {
-	Product_Id		int `json:pid`
-	CheckId			int `json:checksum`
+	Product_Id		string `json:pid`
+	CheckId			string `json:checksum`
 	Manufacturer		string `json:manufacturer`
 	Owner			string `json:owner`
 	Origin			string `json:origin`
@@ -238,7 +238,7 @@ func (t *SimpleChaincode) get_caller_data(stub *shim.ChaincodeStub) (string, int
 		return "", -1, err
 	}
 
-	return user, affiliation, nil
+	return user,affiliation, nil
 }
 
 //==============================================================================================================================
@@ -269,21 +269,31 @@ func (t *SimpleChaincode) retrieve_product(stub *shim.ChaincodeStub, productId s
 // save_changes - Writes to the ledger the Vehicle struct passed in a JSON format. Uses the shim file's 
 //				  method 'PutState'.
 //==============================================================================================================================
-func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, v Product) (bool, error) {
+func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, product Product) (bool, error) {
 
-	bytes, err := json.Marshal(v)
+	bytes, err := json.Marshal(product)
 
 	if err != nil {
 		fmt.Printf("SAVE_CHANGES: Error converting vehicle record: %s", err); return false, errors.New("Error converting vehicle record")
 	}
 
-	err = stub.PutState(v.V5cID, bytes)
+	err = stub.PutState(product.Product_Id, bytes)
 
 	if err != nil {
 		fmt.Printf("SAVE_CHANGES: Error storing vehicle record: %s", err); return false, errors.New("Error storing vehicle record")
 	}
 
 	return true, nil
+}
+//==============================================================================================================================
+// createRandomId - Create a random id
+//				  method 'PutState'.
+//==============================================================================================================================
+
+func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub,) (int){
+	var randomId = 0
+	
+	return randomId
 }
 
 //==============================================================================================================================
@@ -294,14 +304,14 @@ func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, v Product) (boo
 //==============================================================================================================================
 func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args []string) ([]byte, error) {
 
-	caller, caller_affiliation, err := t.get_caller_data(stub)
+	caller1, caller2, caller1_affiliation, caller2_affiliation, destination, price, currency, contract, err := t.get_caller_data(stub)
 
 	if err != nil {
 		return nil, errors.New("Error retrieving caller information")
 	}
 
 	if function == "create_product" {
-		return t.create_product(stub, caller, caller_affiliation, args[0])
+		return t.create_product(stub, caller1, caller2, caller1_affiliation, caller2_affiliation,destination, price, currency, contract, args[0])
 	} else {
 		// If the function is not a create then there must be a car so we need to retrieve the car.
 
@@ -312,7 +322,7 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 			argPos = 0
 		}
 
-		v, err := t.retrieve_product(stub, args[argPos])
+		product, err := t.retrieve_product(stub, args[argPos])
 
 		if err != nil {
 			fmt.Printf("INVOKE: Error retrieving v5c: %s", err); return nil, errors.New("Error retrieving v5c")
@@ -333,33 +343,32 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 			if err != nil {
 				return nil, err
 			}
+			fmt.Printf(rec_affiliation) //TODO remove
+			fmt.Printf(product)//TODO remove
+			//if function == "manufacturer_to_buyer" {
+			//	return t.manufacturer_to_buyer(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//} else if function == "manufacturer_to_bank" {
+			//	return t.manufacturer_to_bank(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//} else if function == "buyer_to_buyer" {
+			//	return t.buyer_to_buyer(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//} else if function == "private_to_lease_company" {
+			//	return t.private_to_lease_company(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//} else if function == "lease_company_to_private" {
+			//	return t.lease_company_to_private(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//} else if function == "private_to_scrap_merchant" {
+			//	return t.private_to_scrap_merchant(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
+			//}
 
-			if function == "manufacturer_to_buyer" {
-				return t.manufacturer_to_buyer(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			} else if function == "manufacturer_to_bank" {
-				return t.manufacturer_to_bank(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			} else if function == "buyer_to_buyer" {
-				return t.buyer_to_buyer(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			} else if function == "private_to_lease_company" {
-				return t.private_to_lease_company(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			} else if function == "lease_company_to_private" {
-				return t.lease_company_to_private(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			} else if function == "private_to_scrap_merchant" {
-				return t.private_to_scrap_merchant(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
-			}
-
-		} else if function == "update_make" {
-			return t.update_make(stub, v, caller, caller_affiliation, args[0])
-		} else if function == "update_model" {
-			return t.update_model(stub, v, caller, caller_affiliation, args[0])
-		} else if function == "update_registration" {
-			return t.update_registration(stub, v, caller, caller_affiliation, args[0])
-		} else if function == "update_vin" {
-			return t.update_vin(stub, v, caller, caller_affiliation, args[0])
-		} else if function == "update_colour" {
-			return t.update_colour(stub, v, caller, caller_affiliation, args[0])
-		} else if function == "scrap_vehicle" {
-			return t.scrap_vehicle(stub, v, caller, caller_affiliation)
+		//} else if function == "update_make" {
+		//	return t.update_make(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_model" {
+		//	return t.update_model(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_registration" {
+		//	return t.update_registration(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_colour" {
+		//	return t.update_colour(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "scrap_vehicle" {
+		//	return t.scrap_vehicle(stub, v, caller, caller_affiliation)
 		}
 
 		return nil, errors.New("Function of that name doesn't exist.")
@@ -406,7 +415,7 @@ func (t *SimpleChaincode) Query(stub *shim.ChaincodeStub, function string, args 
 //=================================================================================================================================
 func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 string, caller2 string, caller1_affiliation int, caller2_affiliation int, product_destination string, product_price float32, product_currency string, contract byte) ([]byte, error) {
 
-	var v Product
+	var product Product
 	var productId = t.createRandomId() // TODO
 
 	if (caller1_affiliation == 2 && caller2_affiliation == 3) {
@@ -429,13 +438,13 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 		product_json := "{" + pid + checkId + manufacturer + owner + origin + current_location + destination + route + state + price + currency + width + height + weight + sales_contract + "}"        // Concatenates the variables to create the total JSON object
 
 
-		var err = json.Unmarshal([]byte(product_json), &v)                                                        // Convert the JSON defined above into a vehicle object for go
+		var err = json.Unmarshal([]byte(product_json), &product)                                                        // Convert the JSON defined above into a vehicle object for go
 
 		if err != nil {
 			return nil, errors.New("Invalid JSON object")
 		}
 
-		record, err := stub.GetState(v.V5cID)                                                                // If not an error then a record exists so cant create a new car with this V5cID as it must be unique
+		record, err := stub.GetState(product.V5cID)                                                                // If not an error then a record exists so cant create a new car with this V5cID as it must be unique
 
 		if record != nil {
 			return nil, errors.New("Vehicle already exists")
@@ -447,7 +456,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 			return nil, errors.New("Permission Denied")
 		}
 
-		_, err = t.save_changes(stub, v)
+		_, err = t.save_changes(stub, product)
 
 		if err != nil {
 			fmt.Printf("CREATE_VEHICLE: Error saving changes: %s", err); return nil, errors.New("Error saving changes")
