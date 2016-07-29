@@ -69,7 +69,7 @@ type Product struct {
 	Width            float32 `json:width`
 	Height           float32 `json:height`
 	Weight           float32 `json:weight`
-	Contract
+	Contracts        []Contract
 }
 
 type Contract struct {
@@ -82,14 +82,14 @@ type Contract struct {
 	Origin      string `json:origin`
 	Destination string `json:destination`
 	Route       string `json:route`
-	Product
-	PPP
+	Product     Product
+	PPP         PPP
 }
 
 type PPP struct {
 	State            int `json:state`
-	Property_Plan 	string[] `json:sellerbank`
-	Payment_Plan 	string[] `json:sellerbank`
+	Property_Plan 	[]string `json:sellerbank`
+	Payment_Plan 	[]string `json:sellerbank`
 }
 
 
