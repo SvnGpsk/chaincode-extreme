@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"fabric/core/chaincode/shim"
+	"github.com/hyperledger/fabric/core/chaincode/shim"
 	"encoding/json"
 	"crypto/x509"
 	"encoding/pem"
 	"net/http"
 	"net/url"
 	"io/ioutil"
-	"math/rand"
-	//	"regexp" //regex for GO...used later when chacking values -> TODO
-	"fabric/core/ledger/statemgmt/state"
+//	"regexp" //regex for GO...used later when chacking values -> TODO
 )
 
 //==============================================================================================================================
@@ -22,26 +20,26 @@ import (
 //						 user's eCert
 //==============================================================================================================================
 const GOVERNMENT = 1
-const SELLER = 2
+const MANUFACTURER = 2
 const BUYER = 3
-const SELLER_BANK = 4
+const MANUFACTURER_BANK = 4
 const BUYER_BANK = 5
 const SHIPPER = 6
 const PRODUCT = 7
 
 
 //==============================================================================================================================
-//	 Status types - Asset lifecycle is broken down into 8 statuses, this is part of the business logic to determine what can
-//					be done to the product and its busines parts at points in its lifecycle
+//	 Status types - Asset lifecycle is broken down into 5 statuses, this is part of the business logic to determine what can 
+//					be done to the vehicle at points in it's lifecycle
 //==============================================================================================================================
-const STATE_PRODUCTPASSPORTADDED = 0
-const STATE_CONTRACTADDED = 1
-const STATE_PAYMENTANDPROPERTYPLANADDED = 2
-const STATE_LETTEROFCREDITACCEPTED = 3
-const STATE_PRODUCTPASSPORTCOMPLETE = 4
-const STATE_PRODUCTBEINGSHIPPED = 5
-const STATE_PRODUCTINUSE = 6
-const STATE_MAINTENANCENEEDED = 7
+const STATE_SALESCONTRACT = 0
+const STATE_ACCREDITIVE = 1
+const STATE_CHECK_ACCREDITIVE = 2
+const STATE_MANUFACTURE = 3
+const STATE_SHIPPING = 4
+const STATE_PAYMENT = 5
+const STATE_INUSE = 6
+const STATE_SCRAPPED = 7
 
 //==============================================================================================================================
 //	 Structure Definitions 
@@ -53,53 +51,37 @@ type  SimpleChaincode struct {
 }
 
 //==============================================================================================================================
-//	Product 	- Defines the structure for a product passport object.
-//	Contract	- Defines the structure for a sales contract, regarding the Product.
-//	PPP		- Defines the structure for a Payment and Property Plan (PPP) regarding the Contract and the Product. JSON on right tells it what JSON fields to map to
+//	Vehicle - Defines the structure for a car object. JSON on right tells it what JSON fields to map to
 //			  that element when reading a JSON object into the struct e.g. JSON make -> Struct Make.
 //==============================================================================================================================
 //noinspection GoStructTag
 type Product struct {
-	ProductID        string `json:pid`
-	CheckID          string `json:checksum`
-	Manufacturer     string `json:manufacturer`
-	Owner            string `json:owner`
-	Current_location string `json:current_location`
-	State            int `json:state`
-	Width            float32 `json:width`
-	Height           float32 `json:height`
-	Weight           float32 `json:weight`
-	Contract
-}
+	Product_Id		string `json:pid`
+	CheckId			string `json:checksum`
+	Manufacturer		string `json:manufacturer`
+	Owner			string `json:owner`
+	Origin			string `json:origin`
+	Current_location	string `json:current_location`
+	Destination		string `json:destination`
+	Route			string `json:route`
+	State			int `json:state`
+	Price			float32 `json:price`
+	Currency		string `json:currency`
+	Width			float32 `json:width`
+	Height			float32 `json:height`
+	Weight			float32 `json:weight`
+	Sales_contract		byte `json:contract`
 
-type Contract struct {
-	Seller      string `json:seller`
-	Buyer       string `json:buyer`
-	Buyer_Bank  string `json:buyerbank`
-	Seller_Bank string `json:sellerbank`
-	Price       float32 `json:price`
-	Currency    string `json:currency`
-	Origin      string `json:origin`
-	Destination string `json:destination`
-	Route       string `json:route`
-	Product
-	PPP
-}
-
-type PPP struct {
-	State            int `json:state`
-	Property_Plan 	string[] `json:sellerbank`
-	Payment_Plan 	string[] `json:sellerbank`
 }
 
 
 //==============================================================================================================================
-//	ProductID Holder - Defines the structure that holds all the ProductIDs for products that have been created.
-//				Used as an index when querying all products.
+//	V5C Holder - Defines the structure that holds all the v5cIDs for vehicles that have been created.
+//				Used as an index when querying all vehicles.
 //==============================================================================================================================
 
-type ProductID_Holder struct {
-	ProductIDs []int `json:"productIds"`
+type Product_Id_Holder struct {
+	ProductIds []string `json:"pids"`
 }
 
 //==============================================================================================================================
@@ -120,7 +102,7 @@ func (t *SimpleChaincode) Init(stub *shim.ChaincodeStub, function string, args [
 	//			peer_address
 
 
-	var ProductIds ProductID_Holder
+	var ProductIds Product_Id_Holder
 
 	bytes, err := json.Marshal(ProductIds)
 
@@ -256,7 +238,7 @@ func (t *SimpleChaincode) get_caller_data(stub *shim.ChaincodeStub) (string, int
 		return "", -1, err
 	}
 
-	return user, affiliation, nil
+	return user,affiliation, nil
 }
 
 //==============================================================================================================================
@@ -295,7 +277,7 @@ func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, product Product
 		fmt.Printf("SAVE_CHANGES: Error converting vehicle record: %s", err); return false, errors.New("Error converting vehicle record")
 	}
 
-	err = stub.PutState(product.ProductID, bytes)
+	err = stub.PutState(product.Product_Id, bytes)
 
 	if err != nil {
 		fmt.Printf("SAVE_CHANGES: Error storing vehicle record: %s", err); return false, errors.New("Error storing vehicle record")
@@ -304,76 +286,16 @@ func (t *SimpleChaincode) save_changes(stub *shim.ChaincodeStub, product Product
 	return true, nil
 }
 //==============================================================================================================================
-// createRandomId - Creates a random id for the product
-//
+// createRandomId - Create a random id
+//				  method 'PutState'.
 //==============================================================================================================================
 
-func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub) (int) {
+func (t *SimpleChaincode) createRandomId(stub *shim.ChaincodeStub,) (int){
 	var randomId = 0
-	var low = 100000000
-	var high = 999999999
-	for {
-		randomId = rand.Intn(high - low) + low
-		if (t.isRandomIdUnused(stub, randomId)) {
-			break
-		}
-	}
-	//TODO in createProduct() die ID zur ID-Liste hinzufügen
-
+	
 	return randomId
 }
 
-//==============================================================================================================================
-// isRandomIdUnused - Checks if the randomly created id is already used by another product.
-//
-//==============================================================================================================================
-func (t *SimpleChaincode) isRandomIdUnused(stub *shim.ChaincodeStub, randomId int) (bool) {
-	usedIds := make([]int, 500)
-	usedIds = t.getAllUsedProductIds(stub)
-	for _, id := range usedIds {
-		if (id == randomId) {
-			return false
-		}
-	}
-
-	return true
-}
-//==============================================================================================================================
-// isRandomIdUnused - Checks if the randomly created id is already used by another product. TODO Check comment
-//
-//==============================================================================================================================
-func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) {
-
-	usedIds := make([]int, 500)
-
-	bytes, err := stub.GetState("productId")
-
-	if err != nil {
-		return nil, errors.New("Unable to get productIds")
-	}
-
-	var productIds ProductID_Holder
-	err = json.Unmarshal(bytes, &productIds)
-
-	if err != nil {
-		return nil, errors.New("Invalid JSON")
-	}
-	var product Product
-
-	for i, pid := range productIds.ProductIDs {
-
-		product, err = t.retrieve_product(stub, pid)
-
-		if err != nil {
-			return nil, errors.New("Failed to retrieve pid")
-		}
-		if (product != nil || product != "[]") {
-			usedIds[i] = product.ProductID
-		}
-	}
-
-	return usedIds
-}
 //==============================================================================================================================
 //	 Router Functions
 //==============================================================================================================================
@@ -389,7 +311,7 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 	}
 
 	if function == "create_product" {
-		return t.create_product(stub, caller1, caller2, caller1_affiliation, caller2_affiliation, destination, price, currency, contract, args[0])
+		return t.create_product(stub, caller1, caller2, caller1_affiliation, caller2_affiliation,destination, price, currency, contract, args[0])
 	} else {
 		// If the function is not a create then there must be a car so we need to retrieve the car.
 
@@ -437,16 +359,16 @@ func (t *SimpleChaincode) Invoke(stub *shim.ChaincodeStub, function string, args
 			//	return t.private_to_scrap_merchant(stub, v, caller, caller_affiliation, args[0], rec_affiliation)
 			//}
 
-			//} else if function == "update_make" {
-			//	return t.update_make(stub, v, caller, caller_affiliation, args[0])
-			//} else if function == "update_model" {
-			//	return t.update_model(stub, v, caller, caller_affiliation, args[0])
-			//} else if function == "update_registration" {
-			//	return t.update_registration(stub, v, caller, caller_affiliation, args[0])
-			//} else if function == "update_colour" {
-			//	return t.update_colour(stub, v, caller, caller_affiliation, args[0])
-			//} else if function == "scrap_vehicle" {
-			//	return t.scrap_vehicle(stub, v, caller, caller_affiliation)
+		//} else if function == "update_make" {
+		//	return t.update_make(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_model" {
+		//	return t.update_model(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_registration" {
+		//	return t.update_registration(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "update_colour" {
+		//	return t.update_colour(stub, v, caller, caller_affiliation, args[0])
+		//} else if function == "scrap_vehicle" {
+		//	return t.scrap_vehicle(stub, v, caller, caller_affiliation)
 		}
 
 		return nil, errors.New("Function of that name doesn't exist.")
@@ -494,7 +416,7 @@ func (t *SimpleChaincode) Query(stub *shim.ChaincodeStub, function string, args 
 func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 string, caller2 string, caller1_affiliation int, caller2_affiliation int, product_destination string, product_price float32, product_currency string, contract byte) ([]byte, error) {
 
 	var product Product
-	var productId = t.createRandomId(stub)
+	var productId = t.createRandomId() // TODO
 
 	if (caller1_affiliation == 2 && caller2_affiliation == 3) {
 		pid := "\"productId\":\"" + productId + "\", "                                                       // Variables to define the JSON
@@ -546,7 +468,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 			return nil, errors.New("Unable to get v5cIDs")
 		}
 
-		var v5cIDs ProductID_Holder
+		var v5cIDs Product_Id_Holder
 
 		err = json.Unmarshal(bytes, &v5cIDs)
 
@@ -554,7 +476,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 			return nil, errors.New("Corrupt V5C_Holder record")
 		}
 
-		v5cIDs.ProductIDs = append(v5cIDs.ProductIDs, productId)
+		v5cIDs.ProductIds = append(v5cIDs.ProductIds, productId)
 
 		bytes, err = json.Marshal(v5cIDs)
 
@@ -580,15 +502,15 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 //noinspection GoPlaceholderCount
 func (t *SimpleChaincode) manufacturer_to_buyer(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PRODUCTPASSPORTADDED        &&
+	if v.Status == STATE_SALESCONTRACT        &&
 		v.Owner == caller                        &&
 		caller_affiliation == GOVERNMENT                &&
-		recipient_affiliation == SELLER                &&
+		recipient_affiliation == MANUFACTURER                &&
 		v.Scrapped == false {
 		// If the roles and users are ok
 
 		v.Owner = recipient_name                // then make the owner the new owner
-		v.Status = STATE_CONTRACTADDED                        // and mark it in the state of manufacture
+		v.Status = STATE_ACCREDITIVE                        // and mark it in the state of manufacture
 
 	} else {
 		// Otherwise if there is an error
@@ -623,14 +545,14 @@ func (t *SimpleChaincode) manufacturer_to_bank(stub *shim.ChaincodeStub, product
 		return nil, errors.New("Car not fully defined")
 	}
 
-	if product.Status == STATE_CONTRACTADDED        &&
+	if product.Status == STATE_ACCREDITIVE        &&
 		product.Owner == caller                                &&
-		caller_affiliation == SELLER                        &&
+		caller_affiliation == MANUFACTURER                        &&
 		recipient_affiliation == BUYER                &&
 		product.Scrapped == false {
 
 		product.Owner = recipient_name
-		product.Status = STATE_PAYMENTANDPROPERTYPLANADDED
+		product.Status = STATE_CHECK_ACCREDITIVE
 
 	} else {
 		return nil, errors.New("Permission denied")
@@ -651,7 +573,7 @@ func (t *SimpleChaincode) manufacturer_to_bank(stub *shim.ChaincodeStub, product
 //=================================================================================================================================
 func (t *SimpleChaincode) buyer_to_buyer(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_CHECK_ACCREDITIVE        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
 		recipient_affiliation == BUYER                        &&
@@ -680,10 +602,10 @@ func (t *SimpleChaincode) buyer_to_buyer(stub *shim.ChaincodeStub, v Product, ca
 //=================================================================================================================================
 func (t *SimpleChaincode) private_to_lease_company(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_CHECK_ACCREDITIVE        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
-		recipient_affiliation == SELLER_BANK                        &&
+		recipient_affiliation == MANUFACTURER_BANK                        &&
 		v.Scrapped == false {
 
 		v.Owner = recipient_name
@@ -706,9 +628,9 @@ func (t *SimpleChaincode) private_to_lease_company(stub *shim.ChaincodeStub, v P
 //=================================================================================================================================
 func (t *SimpleChaincode) lease_company_to_private(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_CHECK_ACCREDITIVE        &&
 		v.Owner == caller                                        &&
-		caller_affiliation == SELLER_BANK                        &&
+		caller_affiliation == MANUFACTURER_BANK                        &&
 		recipient_affiliation == BUYER                        &&
 		v.Scrapped == false {
 
@@ -732,14 +654,14 @@ func (t *SimpleChaincode) lease_company_to_private(stub *shim.ChaincodeStub, v P
 //=================================================================================================================================
 func (t *SimpleChaincode) private_to_scrap_merchant(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_CHECK_ACCREDITIVE        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
 		recipient_affiliation == BUYER_BANK                        &&
 		v.Scrapped == false {
 
 		v.Owner = recipient_name
-		v.Status = STATE_PRODUCTPASSPORTCOMPLETE
+		v.Status = STATE_SHIPPING
 
 	} else {
 
@@ -789,7 +711,7 @@ func (t *SimpleChaincode) update_registration(stub *shim.ChaincodeStub, v Produc
 func (t *SimpleChaincode) update_colour(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, new_value string) ([]byte, error) {
 
 	if v.Owner == caller                                &&
-		caller_affiliation == SELLER                        &&/*((v.Owner				== caller			&&
+		caller_affiliation == MANUFACTURER                        &&/*((v.Owner				== caller			&&
 			caller_affiliation	== MANUFACTURER)		||
 			caller_affiliation	== AUTHORITY)			&&*/
 		v.Scrapped == false {
@@ -815,9 +737,9 @@ func (t *SimpleChaincode) update_colour(stub *shim.ChaincodeStub, v Product, cal
 //=================================================================================================================================
 func (t *SimpleChaincode) update_make(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, new_value string) ([]byte, error) {
 
-	if v.Status == STATE_CONTRACTADDED        &&
+	if v.Status == STATE_ACCREDITIVE        &&
 		v.Owner == caller                                &&
-		caller_affiliation == SELLER                        &&
+		caller_affiliation == MANUFACTURER                        &&
 		v.Scrapped == false {
 
 		v.Make = new_value
@@ -842,9 +764,9 @@ func (t *SimpleChaincode) update_make(stub *shim.ChaincodeStub, v Product, calle
 //=================================================================================================================================
 func (t *SimpleChaincode) update_model(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, new_value string) ([]byte, error) {
 
-	if v.Status == STATE_CONTRACTADDED        &&
+	if v.Status == STATE_ACCREDITIVE        &&
 		v.Owner == caller                                &&
-		caller_affiliation == SELLER                        &&
+		caller_affiliation == MANUFACTURER                        &&
 		v.Scrapped == false {
 
 		v.Name = new_value
@@ -868,7 +790,7 @@ func (t *SimpleChaincode) update_model(stub *shim.ChaincodeStub, v Product, call
 //=================================================================================================================================
 func (t *SimpleChaincode) scrap_vehicle(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PRODUCTPASSPORTCOMPLETE        &&
+	if v.Status == STATE_SHIPPING        &&
 		v.Owner == caller                                &&
 		caller_affiliation == BUYER_BANK                &&
 		v.Scrapped == false {
@@ -924,7 +846,7 @@ func (t *SimpleChaincode) get_vehicles(stub *shim.ChaincodeStub, caller string, 
 		return nil, errors.New("Unable to get v5cIDs")
 	}
 
-	var v5cIDs ProductID_Holder
+	var v5cIDs Product_Id_Holder
 
 	err = json.Unmarshal(bytes, &v5cIDs)
 
@@ -937,7 +859,7 @@ func (t *SimpleChaincode) get_vehicles(stub *shim.ChaincodeStub, caller string, 
 	var temp []byte
 	var v Product
 
-	for _, v5c := range v5cIDs.ProductIDs {
+	for _, v5c := range v5cIDs.ProductIds {
 
 		v, err = t.retrieve_product(stub, v5c)
 

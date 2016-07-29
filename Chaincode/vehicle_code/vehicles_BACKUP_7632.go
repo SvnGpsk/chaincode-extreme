@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	//	"regexp" //regex for GO...used later when chacking values -> TODO
-	"fabric/core/ledger/statemgmt/state"
 )
 
 //==============================================================================================================================
@@ -27,21 +26,21 @@ const BUYER = 3
 const SELLER_BANK = 4
 const BUYER_BANK = 5
 const SHIPPER = 6
-const PRODUCT = 7
+const IOTPRODUCT = 7
 
 
 //==============================================================================================================================
-//	 Status types - Asset lifecycle is broken down into 8 statuses, this is part of the business logic to determine what can
-//					be done to the product and its busines parts at points in its lifecycle
+//	 Status types - Asset lifecycle is broken down into 5 statuses, this is part of the business logic to determine what can 
+//					be done to the product at points in its lifecycle
 //==============================================================================================================================
-const STATE_PRODUCTPASSPORTADDED = 0
+const STATE_EMPTYPRODUCTPASSPORT = 0
 const STATE_CONTRACTADDED = 1
-const STATE_PAYMENTANDPROPERTYPLANADDED = 2
+const STATE_PPPADDED = 2
 const STATE_LETTEROFCREDITACCEPTED = 3
-const STATE_PRODUCTPASSPORTCOMPLETE = 4
-const STATE_PRODUCTBEINGSHIPPED = 5
-const STATE_PRODUCTINUSE = 6
-const STATE_MAINTENANCENEEDED = 7
+const STATE_SHIPPING = 4
+const STATE_PAYMENT = 5
+const STATE_INUSE = 6
+const STATE_SCRAPPED = 7
 
 //==============================================================================================================================
 //	 Structure Definitions 
@@ -59,47 +58,67 @@ type  SimpleChaincode struct {
 //			  that element when reading a JSON object into the struct e.g. JSON make -> Struct Make.
 //==============================================================================================================================
 //noinspection GoStructTag
+
 type Product struct {
-	ProductID        string `json:pid`
-	CheckID          string `json:checksum`
+<<<<<<< Updated upstream
+	Product_Id       string `json:pid`
+	CheckId          string `json:checksum`
 	Manufacturer     string `json:manufacturer`
+=======
+	ProductID        string `json:pid`
+	CheckId          string `json:checksum`
+	Seller           string `json:manufacturer`
+>>>>>>> Stashed changes
 	Owner            string `json:owner`
+	Origin           string `json:origin`
 	Current_location string `json:current_location`
+	Destination      string `json:destination`
+	Route            string `json:route`
 	State            int `json:state`
+	Price            float32 `json:price`
+	Currency         string `json:currency`
 	Width            float32 `json:width`
 	Height           float32 `json:height`
 	Weight           float32 `json:weight`
-	Contract
+	Sales_contract   byte `json:contract`
+<<<<<<< Updated upstream
+=======
+
 }
 
+//
 type Contract struct {
-	Seller      string `json:seller`
-	Buyer       string `json:buyer`
-	Buyer_Bank  string `json:buyerbank`
-	Seller_Bank string `json:sellerbank`
-	Price       float32 `json:price`
-	Currency    string `json:currency`
-	Origin      string `json:origin`
-	Destination string `json:destination`
-	Route       string `json:route`
-	Product
-	PPP
-}
+	Product_Id		string `json:pid`
+	CheckId			string `json:checksum`
+	Manufacturer		string `json:manufacturer`
+	Owner			string `json:owner`
+	Origin			string `json:origin`
+	Current_location	string `json:current_location`
+	Destination		string `json:destination`
+	Route			string `json:route`
+	State			int `json:state`
+	Price			float32 `json:price`
+	Currency		string `json:currency`
+	Width			float32 `json:width`
+	Height			float32 `json:height`
+	Weight			float32 `json:weight`
+	Sales_contract		byte `json:contract`
 
-type PPP struct {
-	State            int `json:state`
-	Property_Plan 	string[] `json:sellerbank`
-	Payment_Plan 	string[] `json:sellerbank`
+>>>>>>> Stashed changes
 }
 
 
 //==============================================================================================================================
-//	ProductID Holder - Defines the structure that holds all the ProductIDs for products that have been created.
-//				Used as an index when querying all products.
+//	V5C Holder - Defines the structure that holds all the v5cIDs for vehicles that have been created.
+//				Used as an index when querying all vehicles.
 //==============================================================================================================================
 
-type ProductID_Holder struct {
-	ProductIDs []int `json:"productIds"`
+type Product_Id_Holder struct {
+<<<<<<< Updated upstream
+	ProductIds []int `json:"productIds"`
+=======
+	ProductIDs []string `json:"pids"`
+>>>>>>> Stashed changes
 }
 
 //==============================================================================================================================
@@ -120,9 +139,9 @@ func (t *SimpleChaincode) Init(stub *shim.ChaincodeStub, function string, args [
 	//			peer_address
 
 
-	var ProductIds ProductID_Holder
+	var ProductIDs Product_Id_Holder
 
-	bytes, err := json.Marshal(ProductIds)
+	bytes, err := json.Marshal(ProductIDs)
 
 	if err != nil {
 		return nil, errors.New("Error creating Product_Id_Holder record")
@@ -264,14 +283,14 @@ func (t *SimpleChaincode) get_caller_data(stub *shim.ChaincodeStub) (string, int
 //					JSON into the Vehicle struct for use in the contract. Returns the Vehcile struct.
 //					Returns empty v if it errors.
 //==============================================================================================================================
-func (t *SimpleChaincode) retrieve_product(stub *shim.ChaincodeStub, productId string) (Product, error) {
+func (t *SimpleChaincode) retrieve_product(stub *shim.ChaincodeStub, productID string) (Product, error) {
 
 	var product Product
 
-	bytes, err := stub.GetState(productId);
+	bytes, err := stub.GetState(productID);
 
 	if err != nil {
-		fmt.Printf("RETRIEVE_PRODUCT: Failed to invoke chaincode: %s", err); return product, errors.New("RETRIEVE_V5C: Error retrieving vehicle with pid = " + productId)
+		fmt.Printf("RETRIEVE_PRODUCT: Failed to invoke chaincode: %s", err); return product, errors.New("RETRIEVE_V5C: Error retrieving vehicle with pid = " + productID)
 	}
 
 	err = json.Unmarshal(bytes, &product);
@@ -339,7 +358,7 @@ func (t *SimpleChaincode) isRandomIdUnused(stub *shim.ChaincodeStub, randomId in
 	return true
 }
 //==============================================================================================================================
-// isRandomIdUnused - Checks if the randomly created id is already used by another product. TODO Check comment
+// isRandomIdUnused - Checks if the randomly created id is already used by another product.
 //
 //==============================================================================================================================
 func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) {
@@ -352,7 +371,7 @@ func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) 
 		return nil, errors.New("Unable to get productIds")
 	}
 
-	var productIds ProductID_Holder
+	var productIds Product_Id_Holder
 	err = json.Unmarshal(bytes, &productIds)
 
 	if err != nil {
@@ -360,7 +379,7 @@ func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) 
 	}
 	var product Product
 
-	for i, pid := range productIds.ProductIDs {
+	for i, pid := range productIds.ProductIds {
 
 		product, err = t.retrieve_product(stub, pid)
 
@@ -368,7 +387,7 @@ func (t *SimpleChaincode) getAllUsedProductIds(stub *shim.ChaincodeStub) (bool) 
 			return nil, errors.New("Failed to retrieve pid")
 		}
 		if (product != nil || product != "[]") {
-			usedIds[i] = product.ProductID
+			usedIds[i] = product.Product_Id
 		}
 	}
 
@@ -494,10 +513,14 @@ func (t *SimpleChaincode) Query(stub *shim.ChaincodeStub, function string, args 
 func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 string, caller2 string, caller1_affiliation int, caller2_affiliation int, product_destination string, product_price float32, product_currency string, contract byte) ([]byte, error) {
 
 	var product Product
+<<<<<<< Updated upstream
 	var productId = t.createRandomId(stub)
+=======
+	var productID = t.createRandomId() // TODO
+>>>>>>> Stashed changes
 
 	if (caller1_affiliation == 2 && caller2_affiliation == 3) {
-		pid := "\"productId\":\"" + productId + "\", "                                                       // Variables to define the JSON
+		pid := "\"productID\":\"" + productID + "\", "                                                       // Variables to define the JSON
 		checkId := "\"checksum\":\"UNDEFINED\", "
 		manufacturer := "\"manufacturer\":\"" + caller1 + "\", "
 		owner := "\"owner\":\"" + caller1 + "\", "
@@ -546,7 +569,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 			return nil, errors.New("Unable to get v5cIDs")
 		}
 
-		var v5cIDs ProductID_Holder
+		var v5cIDs Product_Id_Holder
 
 		err = json.Unmarshal(bytes, &v5cIDs)
 
@@ -554,7 +577,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 			return nil, errors.New("Corrupt V5C_Holder record")
 		}
 
-		v5cIDs.ProductIDs = append(v5cIDs.ProductIDs, productId)
+		v5cIDs.ProductIDs = append(v5cIDs.ProductIDs, productID)
 
 		bytes, err = json.Marshal(v5cIDs)
 
@@ -580,7 +603,7 @@ func (t *SimpleChaincode) create_product(stub *shim.ChaincodeStub, caller1 strin
 //noinspection GoPlaceholderCount
 func (t *SimpleChaincode) manufacturer_to_buyer(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PRODUCTPASSPORTADDED        &&
+	if v.Status == STATE_EMPTYPRODUCTPASSPORT        &&
 		v.Owner == caller                        &&
 		caller_affiliation == GOVERNMENT                &&
 		recipient_affiliation == SELLER                &&
@@ -630,7 +653,7 @@ func (t *SimpleChaincode) manufacturer_to_bank(stub *shim.ChaincodeStub, product
 		product.Scrapped == false {
 
 		product.Owner = recipient_name
-		product.Status = STATE_PAYMENTANDPROPERTYPLANADDED
+		product.Status = STATE_PPPADDED
 
 	} else {
 		return nil, errors.New("Permission denied")
@@ -651,7 +674,7 @@ func (t *SimpleChaincode) manufacturer_to_bank(stub *shim.ChaincodeStub, product
 //=================================================================================================================================
 func (t *SimpleChaincode) buyer_to_buyer(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_PPPADDED        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
 		recipient_affiliation == BUYER                        &&
@@ -680,7 +703,7 @@ func (t *SimpleChaincode) buyer_to_buyer(stub *shim.ChaincodeStub, v Product, ca
 //=================================================================================================================================
 func (t *SimpleChaincode) private_to_lease_company(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_PPPADDED        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
 		recipient_affiliation == SELLER_BANK                        &&
@@ -706,7 +729,7 @@ func (t *SimpleChaincode) private_to_lease_company(stub *shim.ChaincodeStub, v P
 //=================================================================================================================================
 func (t *SimpleChaincode) lease_company_to_private(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_PPPADDED        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == SELLER_BANK                        &&
 		recipient_affiliation == BUYER                        &&
@@ -732,14 +755,14 @@ func (t *SimpleChaincode) lease_company_to_private(stub *shim.ChaincodeStub, v P
 //=================================================================================================================================
 func (t *SimpleChaincode) private_to_scrap_merchant(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int, recipient_name string, recipient_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PAYMENTANDPROPERTYPLANADDED        &&
+	if v.Status == STATE_PPPADDED        &&
 		v.Owner == caller                                        &&
 		caller_affiliation == BUYER                        &&
 		recipient_affiliation == BUYER_BANK                        &&
 		v.Scrapped == false {
 
 		v.Owner = recipient_name
-		v.Status = STATE_PRODUCTPASSPORTCOMPLETE
+		v.Status = STATE_SHIPPING
 
 	} else {
 
@@ -868,7 +891,7 @@ func (t *SimpleChaincode) update_model(stub *shim.ChaincodeStub, v Product, call
 //=================================================================================================================================
 func (t *SimpleChaincode) scrap_vehicle(stub *shim.ChaincodeStub, v Product, caller string, caller_affiliation int) ([]byte, error) {
 
-	if v.Status == STATE_PRODUCTPASSPORTCOMPLETE        &&
+	if v.Status == STATE_SHIPPING        &&
 		v.Owner == caller                                &&
 		caller_affiliation == BUYER_BANK                &&
 		v.Scrapped == false {
@@ -924,7 +947,7 @@ func (t *SimpleChaincode) get_vehicles(stub *shim.ChaincodeStub, caller string, 
 		return nil, errors.New("Unable to get v5cIDs")
 	}
 
-	var v5cIDs ProductID_Holder
+	var v5cIDs Product_Id_Holder
 
 	err = json.Unmarshal(bytes, &v5cIDs)
 
